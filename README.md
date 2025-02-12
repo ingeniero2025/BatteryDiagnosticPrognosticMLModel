@@ -9,3 +9,5 @@ Instructions for setup
 ## Usage
 
 How to use the project
+
+Testing GitHub connection
