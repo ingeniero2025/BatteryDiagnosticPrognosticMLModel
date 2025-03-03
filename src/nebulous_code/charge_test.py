@@ -103,6 +103,8 @@ def train_model(model, train_loader, num_epochs=50, device='cpu'):
     best_loss = float('inf')
     patience = 10
     counter = 0
+
+    train_losses = []
     
     for epoch in range(num_epochs):
         epoch_loss = 0
@@ -120,6 +122,10 @@ def train_model(model, train_loader, num_epochs=50, device='cpu'):
             optimizer.step()
             
             epoch_loss += loss.item()
+
+        avg_epoch_loss = epoch_loss / len(train_loader) #Average loss per epoch
+        train_losses.append(avg_epoch_loss) #Append average loss to list
+        print(f"Epoch {epoch+1}/{num_epochs}, Training Loss: {avg_epoch_loss:.4f}") #Print training loss for each epoch
         
         # Early stopping
         if epoch_loss < best_loss:
@@ -131,7 +137,7 @@ def train_model(model, train_loader, num_epochs=50, device='cpu'):
                 print(f"Early stopping at epoch {epoch}")
                 break
     
-    return model
+    return model, train_losses
 
 def plot_charge_test_predictions(df, model, scalers, time_step=60, device='cpu'):
 
@@ -169,14 +175,37 @@ def plot_charge_test_predictions(df, model, scalers, time_step=60, device='cpu')
     plt.savefig(f"{Path('C:/Users/jmani/Documents/BatteryMLProject/src/data').stem}_predictions.png")
     plt.show()
 
+def calculate_scaled_mse(model, data_loader, scaler, device='cpu'):
+    """Calculate MSE scaled between 0 and 1."""
+    model.eval()  # Set model to evaluation mode
+    criterion = nn.MSELoss()
+    total_loss = 0
+    with torch.no_grad():
+        for batch_X, batch_y in data_loader:
+            batch_X = batch_X.to(device)
+            batch_y = batch_y.to(device)
+            outputs = model(batch_X)
+            loss = criterion(outputs, batch_y)
+            total_loss += loss.item()
+
+    mse = total_loss / len(data_loader)  # Average MSE over all batches
+
+    # Scale MSE to be between 0 and 1.  This requires knowing the possible range of your SOC values.
+    # Method 1: If you know the min and max SOC in your data:
+    min_soc = scaler.data_min_[0] #Get min and max values from scaler
+    max_soc = scaler.data_max_[0]
+    scaled_mse = mse / ((max_soc - min_soc)**2) #Scale by the range of the data squared
+
+    # Method 2: If you want to scale based on the variance of the target variable:
+    # scaled_mse = mse / np.var(scaler.inverse_transform(batch_y.cpu().numpy().reshape(-1,1))) #Scale by the variance of the target variable
+
+    return scaled_mse
 
 if __name__ == "__main__":
     # Handle potential errors during time conversion
     if df['Time'].isnull().any():
         print("Error: Time conversion failed. Check the time format in your CSV file.")
         exit()
-
-    plot_charge_test(df)
 
     # Preprocess data *before* training the model
     scaled_data, scalers = preprocess_data(df)
@@ -186,9 +215,27 @@ if __name__ == "__main__":
     train_loader = DataLoader(dataset, batch_size=32, shuffle=False)
 
     model = LSTMModel(input_size=1, hidden_size=50, output_size=1)
-    model = train_model(model, train_loader, num_epochs=50)
+    model, train_losses = train_model(model, train_loader, num_epochs=50)
+
+    # Plot the training loss
+    plt.figure(figsize=(10, 6))
+    plt.plot(train_losses, label='Training Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('MSE Loss')
+    plt.title('Training MSE Loss')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(f"{Path('C:/Users/jmani/Documents/BatteryMLProject/src/data').stem}_training_loss.png") #Save figure
+    plt.show()
 
     plot_charge_test_predictions(df, model, scalers, time_step)  # Pass the trained model and scalers
+
+    # Calculate and print scaled MSE
+    dataset_eval = TimeSeriesDataset(X, y) #Dataset for evaluation
+    eval_loader = DataLoader(dataset_eval, batch_size=32, shuffle=False) #Dataloader for evaluation
+    scaled_mse = calculate_scaled_mse(model, eval_loader, scalers[1]) #Calculate scaled MSE, pass in the correct scaler
+    print(f"Scaled MSE (0-1): {scaled_mse:.4f}")
+
 
 
 
