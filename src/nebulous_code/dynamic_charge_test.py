@@ -1,13 +1,12 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import argparse
-import os
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from pathlib import Path
+import re
 
 # Directory where live test data is stored
 directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/BMS_Data/live_tests/orionbms_log_2025-02-07-21-19-32testdata1.csv"
@@ -18,42 +17,38 @@ df = pd.read_csv(directory)
 # Convert time column to handle EST timestamps
 df['Time'] = pd.to_datetime(df['Time'], format='%a %b %d %H:%M:%S EST %Y')
 
-def plot_charge_test(df):
+def plot_raw_data(df):
 
-    # Create new figure
-    plt.figure(figsize=(10, 6))
+    output_dir = Path("C:/Users/jmani/Documents/BatteryMLProject/src/data/BMS_Data/live_tests/charge_test")
 
-    # Plot SOC data
-    plt.scatter(df['Time'], df["Pack State of Charge (SOC)"], alpha=0.5)
-    plt.xlabel("Time")
-    plt.ylabel("State of Charge (SOC)")
-    plt.grid(True)
-    plt.title("Pack State of Charge Over Time")
+    for column in df.columns:
 
-    plt.show()
+        if column == 'Time':
+            continue
 
-    # Plot SOH data
-    plt.scatter(df['Time'], df["Pack State of Health (SOH)"], alpha=0.5)
-    plt.xlabel("Time")
-    plt.ylabel("State of Health (SOH)")
-    plt.grid(True)
-    plt.title("Pack State of Health Over Time")
-    plt.savefig(f"{Path('C:/Users/jmani/Documents/BatteryMLProject/src/data').stem}_SOH_over_time.png") #Save figure
+        current_column = df[column]
 
+        # Create new figure
+        plt.figure(figsize=(12, 7))
 
-    # Plot Voltage data
+        # Plot SOC data
+        plt.scatter(df['Time'], current_column, alpha=0.5)
+        plt.xlabel("Time")
+        plt.ylabel(column)
+        plt.grid(True)
+        plt.title(f"{column} Over Time")
 
-    # Plot Current data
+        # Sanitize the column name for the filename
+        safe_column_name = re.sub(r'[\\/*?:"<>|()\s=]', '_', column)
 
+        # Save the figure
+        save_path = output_dir / f"{safe_column_name}_over_time.png"
+        plt.savefig(save_path)
+        print(f"Saved plot: {save_path}")
 
+        plt.close()
 
-    # Plot Temperature data
-
-    # Save figure
-    # plt.savefig(f"{Path('C:/Users/jmani/Documents/BatteryMLProject/src/data').stem}.png")
-
-    
-    return plt
+    print("All plots generated successfully.")
 
 class LSTMModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=50, output_size=1):
@@ -225,6 +220,9 @@ if __name__ == "__main__":
         print("Error: Time conversion failed. Check the time format in your CSV file.")
         exit()
 
+    plot_raw_data(df)
+
+    """
     # Preprocess data *before* training the model
     scaled_data, scalers = preprocess_data(df)
     time_step = 60
@@ -253,10 +251,5 @@ if __name__ == "__main__":
     eval_loader = DataLoader(dataset_eval, batch_size=32, shuffle=False) #Dataloader for evaluation
     scaled_mse = calculate_scaled_mse(model, eval_loader, scalers[1]) #Calculate scaled MSE, pass in the correct scaler
     print(f"Scaled MSE (0-1): {scaled_mse:.4f}")
-
-
-
-
     
-    
-
+    """
