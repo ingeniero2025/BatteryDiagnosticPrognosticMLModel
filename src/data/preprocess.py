@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
 import glob
+import os
 
-input_directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/raw_data"
+input_directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/raw_data/*.csv"
 output_directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/processed_data"
 
 def load_data(file_path):
@@ -22,8 +23,7 @@ def clean_data(df):
     df.dropna(subset=['Time'], inplace=True)
     
     # Handle missing values (forward fill then backward fill)
-    df.fillna(method='ffill', inplace=True)
-    df.fillna(method='bfill', inplace=True)
+    df = df.ffill().bfill()
 
     # Remove outliers using IQR method
     def remove_outliers_iqr(df, cols):
@@ -33,8 +33,9 @@ def clean_data(df):
             IQR = Q3 - Q1
             lower_bound = Q1 - 1.5 * IQR
             upper_bound = Q3 + 1.5 * IQR
-            df[col] = np.clip(df[col], lower_bound, upper_bound)
-        return df
+            
+
+        return df[(df[cols] >= lower_bound) & (df[cols] <= upper_bound)]
     
     # Apply outlier removal for numeric columns (excluding 'Time')
     numeric_cols = df.select_dtypes(include=[np.number]).columns

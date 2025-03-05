@@ -222,7 +222,7 @@ if __name__ == "__main__":
 
     plot_raw_data(df)
 
-    """
+    
     # Preprocess data *before* training the model
     scaled_data, scalers = preprocess_data(df)
     time_step = 60
@@ -252,4 +252,4 @@ if __name__ == "__main__":
     scaled_mse = calculate_scaled_mse(model, eval_loader, scalers[1]) #Calculate scaled MSE, pass in the correct scaler
     print(f"Scaled MSE (0-1): {scaled_mse:.4f}")
     
-    """
+    plt.close()
