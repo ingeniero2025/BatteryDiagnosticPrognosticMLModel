@@ -155,7 +155,7 @@ def train_model(model, train_loader, num_epochs=50, device='cpu'):
 def plot_charge_test_predictions(df, model, scalers, time_step=60, device='cpu'):
 
     # Plot data for visualization
-    plt = plot_charge_test(df)
+    plt = plot_raw_data(df)
 
     # Prepare data for LSTM prediction (similar to training data preparation)
     scaled_data, _ = preprocess_data(df)
