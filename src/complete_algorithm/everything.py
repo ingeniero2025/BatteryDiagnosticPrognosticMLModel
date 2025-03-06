@@ -11,17 +11,17 @@ from torch.utils.data import Dataset
 from pathlib import Path
 import re
 
-input_directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/raw_data/*.csv"
-output_directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/processed_data"
+""" set up automation in the future to periodically receive batches of data from the database """
+# Directory where raw data is stored
+raw_data_dir = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/raw_data/*.csv"
+# Directory where processed data is stored
+processed_data_dir = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/processed_data"
 
-class RawDataPlotter:
+class RawDataPlotter(raw_data_dir, processed_data_dir):
 
-    # Directory where test data is stored
-    directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset"
+    df = pd.read_csv(raw_data_dir)
 
-    df = pd.read_csv(directory)
-
-    output_dir = Path("C:/Users/jmani/Documents/BatteryMLProject/src/data/raw_data_plots")
+    raw_plot_dir = Path("C:/Users/jmani/Documents/BatteryMLProject/src/data/raw_data_plots")
 
     # Convert time column to handle EST timestamps
     df['Time'] = pd.to_datetime(df['Time'], format='%a %b %d %H:%M:%S EST %Y')
@@ -31,7 +31,8 @@ class RawDataPlotter:
         if column == 'Time':
             continue
 
-        current_column = df[column]
+        if df[column] == 'Pack Voltage' or df[column] == 'Pack Amperage (Current)' or df[column] == 'Pack State of Charge (SOC)':
+            current_column = df[column]
 
         # Create new figure
         plt.figure(figsize=(12, 7))
@@ -47,7 +48,7 @@ class RawDataPlotter:
         safe_column_name = re.sub(r'[\\/*?:"<>|()\s=]', '_', column)
 
         # Save the figure
-        save_path = output_dir / f"{safe_column_name}_over_time.png"
+        save_path = raw_data_dir / f"{safe_column_name}_over_time.png"
         plt.savefig(save_path)
         print(f"Saved plot: {save_path}")
 
@@ -75,7 +76,9 @@ class DataPreprocessor:
         df.dropna(subset=['Time'], inplace=True)
     
         # Handle missing values (forward fill then backward fill)
-        df = df.ffill().bfill()
+        df.fillna(method='ffill', inplace=True)
+        df.fillna(method='bfill', inplace=True)
+            # df = df.ffill().bfill()
 
         # Remove outliers using IQR method
         def remove_outliers_iqr(df, cols):
@@ -85,9 +88,9 @@ class DataPreprocessor:
                 IQR = Q3 - Q1
                 lower_bound = Q1 - 1.5 * IQR
                 upper_bound = Q3 + 1.5 * IQR
+                df = df[(df[col] >= lower_bound) & (df[col] <= upper_bound)]
             
-
-            return df[(df[cols] >= lower_bound) & (df[cols] <= upper_bound)]
+            return df
     
         # Apply outlier removal for numeric columns (excluding 'Time')
         numeric_cols = df.select_dtypes(include=[np.number]).columns
@@ -96,77 +99,110 @@ class DataPreprocessor:
 
         return df
 
-    def preprocess(input_directory, output_directory):
+    def preprocess(raw_data_dir, processed_data_dir):
         """Processes all CSV files in the input directory and saves them to the output directory."""
-        file_list = glob.glob(input_directory)
+        
+        file_list = glob.glob(os.path.join(raw_data_dir, "*.csv"))
 
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+        if not file_list:
+            raise FileNotFoundError(f"No CSV files found in {raw_data_dir}")
+
+        # Create output directory if it doesn't exist
+        os.makedirs(processed_data_dir, exist_ok=True)
+
+        processed_files = []
 
         for file in file_list:
             # Load raw data
-            df = load_data(file)
-
+            df = DataPreprocessor.load_data(file)
             # Clean data
-            df = clean_data(df)
+            df = DataPreprocessor.clean_data(df)
 
             # Generate output file path
-            output_file = os.path.join(output_directory, os.path.basename(file))
+            output_file = os.path.join(processed_data_dir, os.path.basename(file))
 
             # Save processed data
             df.to_csv(output_file, index=False)
+            processed_files.append(output_file)
 
             print(f"Processed file saved: {output_file}")
 
-    # Directory where live test data is stored
-    input_dir = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/raw_data/*.csv"
 
-    # Get list of all CSV files in the directory
-    csv_files = glob.glob(str(input_dir))
+        # Read and concatenate all CSV files
+        df_list = [pd.read_csv(file) for file in csv_files]  # Read each file into a DataFrame
+        df_combined = pd.concat(df_list, ignore_index=True)
 
-    # Check if any files were found
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in {input_dir}")
+        # Reduce memory usage by downcasting data types
+        for col in df_combined.select_dtypes(include=['float64']).columns:
+            df_combined[col] = pd.to_numeric(df_combined[col], downcast="float")
 
-    # Read and concatenate all CSV files
-    df_list = [pd.read_csv(file) for file in csv_files]  # Read each file into a DataFrame
-    df = pd.concat(df_list, ignore_index=True)  # Concatenate all DataFrames
 
-    # Reduce memory usage by downcasting data types
-    for col in df.select_dtypes(include=['float64']).columns:
-        df[col] = pd.to_numeric(df[col], downcast="float")
+        # Convert time column to datetime format
+        try:
+            df_combined['Time'] = pd.to_datetime(df_combined['Time'], format='%a %b %d %H:%M:%S %Z %Y', errors='coerce')
+        except Exception as e:
+            print(f"Error converting time column: {e}")
 
-    # Convert time column to handle EDT/EST timestamps
-    try:
-        df['Time'] = pd.to_datetime(df['Time'], format='%a %b %d %H:%M:%S %Z %Y', errors='coerce')
-    except Exception as e:
-        print(f"Error converting time column: {e}")
-        df['Time'] = pd.to_datetime(df['Time'], format='mixed', errors='coerce')
+        # Drop invalid time entries
+        df.dropna(subset=['Time'], inplace=True)
 
-    # Drop invalid time entries
-    df.dropna(subset=['Time'], inplace=True)
+        # Save final processed dataset
+        final_output_dir = Path(processed_data_dir) / "final_dataset"
+        final_output_dir.mkdir(parents=True, exist_ok=True)
+        final_output_path = final_output_dir / "processed_data.csv"
 
-    # Output directory
-    output_dir = Path("C:/Users/jmani/Documents/BatteryMLProject/src/data/BMS_Data/complete_dataset/analysis")
-    output_dir.mkdir(parents=True, exist_ok=True)
+        df_combined.to_csv(final_output_path, index=False)
 
-    # Save processed data to CSV
-    df.to_csv(output_dir / "processed_data.csv", index=False)
+        print(f"Final combined dataset saved: {final_output_path}")
 
-    print(df.head())
+        print(df.head())
 
-    # Create a new DataFrame with Time, Voltage, Current and SOC columns
-    data = pd.DataFrame({
-        'Time': df['Time'],
-        'Pack Voltage': df['Pack Voltage'],
-        'Pack Current': df['Pack Amperage (Current)'],
-        'Pack SOC': df['Pack State of Charge (SOC)']
-        })
+# stopped right here 3-6-25 2:37 PM
 
 class PreProcessedDataPlotter:
     # something
 
     plt.close()
+
+class StatMeasures:
+    def __init__(self, processed_data_dir):
+        # Load preprocessed data from CSV
+        self.df = pd.read_csv(processed_data_dir)
+        # Define the specific columns to analyze
+        self.columns_of_interest = ['Pack Voltage', 'Pack Amperage (Current)', 'Pack State of Charge (SOC)']
+
+    def calculate_statistics(self):
+        stats = {}
+
+        for column in self.columns_of_interest:
+            if column in self.df.columns:
+                data = self.df[column]
+
+                # Compute statistics
+                stats[column] = {
+                    "Mean": data.mean(),
+                    "Variance": data.var(),
+                    "Interquartile Range": data.quantile(0.75) - data.quantile(0.25),
+                    "Min": data.min(),
+                    "Max": data.max(),
+                    "Standard Deviation": data.std()
+                }
+
+        # Convert statistics to DataFrame
+        stats_df = pd.DataFrame.from_dict(stats, orient='index')
+        stats_df.reset_index(inplace=True)
+        stats_df.rename(columns={'index': 'Metric'}, inplace=True)
+
+        # Save statistics to CSV
+        stats_df.to_csv("statistics_summary.csv", index=False)
+
+        # Compute and save correlation matrix (only for the specified columns)
+        correlation_matrix = self.df[self.columns_of_interest].corr()
+        correlation_matrix.to_csv("correlation_matrix.csv")
+
+        print("Statistics summary and correlation matrix saved successfully.")
+
+# stopped here 3-6-25 3:27 PM, please validate above sections of code
 
 class StatPlotter:
 
@@ -495,6 +531,10 @@ class MSECalculator:
         return scaled_mse
     
 if __name__ == "__main__":
+
+
+
+    """
     # Preprocess data *before* training the model
     scaled_data, scalers = preprocess_data(df)
     time_step = 60
@@ -525,3 +565,4 @@ if __name__ == "__main__":
     print(f"Scaled MSE (0-1): {scaled_mse:.4f}")
     
     plt.close()
+    """
