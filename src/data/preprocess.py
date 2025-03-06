@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import glob
 import os
+from statistical_analysi import stat_extractor
 
 input_directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/raw_data/*.csv"
 output_directory = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/processed_data"
