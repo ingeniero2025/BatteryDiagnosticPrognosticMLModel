@@ -185,11 +185,15 @@ class PreProcessedDataPlotter:
     plt.close()
 
 class StatMeasures:
-    def __init__(self, processed_data_dir):
+    def __init__(self, raw_data_path):
         # Load preprocessed data from CSV
-        self.df = pd.read_csv(processed_data_dir)
+        self.df = pd.read_csv(raw_data_path)
+
         # Define the specific columns to analyze
         self.columns_of_interest = ['Pack Voltage', 'Pack Amperage (Current)', 'Pack State of Charge (SOC)']
+
+        # Extract the filename from the given path for saving results
+        self.base_filename = os.path.splitext(os.path.basename(raw_data_path))[0]
 
     def calculate_statistics(self):
         stats = {}
@@ -213,12 +217,19 @@ class StatMeasures:
         stats_df.reset_index(inplace=True)
         stats_df.rename(columns={'index': 'Metric'}, inplace=True)
 
-        # Save statistics to CSV
-        stats_df.to_csv("statistics_summary.csv", index=False)
+        # Define save paths
+        analysis_dir = "C:/Users/jmani/Documents/BatteryMLProject/src/data/complete_dataset/analysis/"
+        stats_path = os.path.join(analysis_dir, f"{self.base_filename}_statistics_summary.csv")
+        correlation_path = os.path.join(analysis_dir, f"{self.base_filename}_correlation_matrix.csv")
 
-        # Compute and save correlation matrix (only for the specified columns)
-        correlation_matrix = self.df[self.columns_of_interest].corr()
-        correlation_matrix.to_csv("correlation_matrix.csv")
+        # Save statistics to CSV
+        stats_df.to_csv(stats_path, index=False)
+
+        # Compute and save correlation matrix (only for existing columns)
+        available_columns = [col for col in self.columns_of_interest if col in self.df.columns]
+        if available_columns:
+            correlation_matrix = self.df[available_columns].corr()
+            correlation_matrix.to_csv(correlation_path)
 
         print("Statistics summary and correlation matrix saved successfully.")
 
@@ -427,8 +438,38 @@ class StatFeatureExtractor:
         print(self.df.info())
         print(self.df.describe())
 
+class TimeSeriesDataset(Dataset):
+    def __init__(self, X, y):
+        self.X = torch.FloatTensor(X)
+        self.y = torch.FloatTensor(y)
+    
+    def __len__(self):
+        return len(self.X)
+    
+    def __getitem__(self, idx):
+        return self.X[idx], self.y[idx]
+
 class PreModelDataProcessor:
     """ Class for preprocessing data for machine learning models. """
+
+    def preprocess_data(df):
+        """ Preprocess the Time and Pack State of Charge (SOC) data from DataFrame for LSTM input """
+        # Convert timestamps to numerical values
+        time_seconds = (df['Time'] - df['Time'].min()).dt.total_seconds().values.reshape(-1, 1)
+        soc_values = df['Pack State of Charge (SOC)'].values.reshape(-1, 1)
+    
+    # Normalize the data using MinMaxScaler
+        time_scaler = MinMaxScaler(feature_range=(0, 1))
+        soc_scaler = MinMaxScaler(feature_range=(0, 1))
+
+        # Scale both columns
+        scaled_time = time_scaler.fit_transform(time_seconds)
+        scaled_soc = soc_scaler.fit_transform(soc_values)
+
+        # Combine scaled data
+        scaled_data = np.hstack((scaled_time, scaled_soc))
+    
+        return scaled_data, (time_scaler, soc_scaler)
 
     def prepare_lstm_data(scaled_data, time_step=60):
 
@@ -457,17 +498,6 @@ class LSTMModel(nn.Module):
         predictions = self.linear(lstm_out[:, -1, :])
         return predictions.squeeze(1)
     
-class TimeSeriesDataset(Dataset):
-    def __init__(self, X, y):
-        self.X = torch.FloatTensor(X)
-        self.y = torch.FloatTensor(y)
-    
-    def __len__(self):
-        return len(self.X)
-    
-    def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
-
 class ModelTrainer:
 
     def train_model(model, train_loader, num_epochs=50, device='cpu'):
@@ -558,7 +588,8 @@ if __name__ == "__main__":
     plotter.plot_columns()
     """
 
-    # not validated yet
+    # not validated yet, probably really bad for the data lol
+    """
     preprocessor = DataPreprocessor()
     # Test 1: Load Data
     df = preprocessor.load_data(raw_data_path)
@@ -568,6 +599,14 @@ if __name__ == "__main__":
     # Test 2: Clean Data
     cleaned_df = preprocessor.clean_data(df)
     print(cleaned_df.head())
+    """
+
+    # Validated StatMeasures 3-10-25 7:34 PM
+    """
+    stat_measures = StatMeasures(raw_data_path)
+    stat_measures.calculate_statistics()
+    """
+
 
 
     """
